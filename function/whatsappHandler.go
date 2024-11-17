@@ -16,7 +16,7 @@ import (
 )
 
 var AITurnedON bool
-var models = "gemini-1.5-flash"
+var models = "gemini-1.5-flash-8b"
 var IsWorking = false
 
 func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context.Context) func(interface{}) {
@@ -58,7 +58,7 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 						Conversation: proto.String(strings),
 					})
 				} else if messageBody == "!useFlash" {
-					models = "gemini-1.5-flash"
+					models = "gemini-1.5-flash-8b"
 					clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String("Model changed into Flash"),
 					})

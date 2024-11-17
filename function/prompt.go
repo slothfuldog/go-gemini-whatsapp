@@ -32,6 +32,8 @@ func WritePrompt(prompt string, ctx context.Context, client genai.Client, models
 
 func printResponse(resp *genai.GenerateContentResponse) {
 	fmt.Println("----")
+	fmt.Println("Generating using", models)
+	fmt.Println("========================")
 	for _, cand := range resp.Candidates {
 		if cand.Content != nil {
 			for _, part := range cand.Content.Parts {
@@ -39,5 +41,6 @@ func printResponse(resp *genai.GenerateContentResponse) {
 			}
 		}
 	}
+	fmt.Println(text)
 	fmt.Println("---")
 }
