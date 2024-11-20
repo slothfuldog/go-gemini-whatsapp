@@ -20,7 +20,6 @@ func InitLogFileWin() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("Working Directory:", wd)
 
 	// Define the filepath
 	filePath := "data\\" // Using Windows filepath separator
@@ -54,7 +53,6 @@ func CreateFile(detail string) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		fmt.Println("Working Directory:", wd)
 
 		// Define the filepath
 		filePath := "data\\" // Using Windows filepath separator
@@ -63,6 +61,10 @@ func CreateFile(detail string) {
 		resolvedFilePath := filepath.Join(wd, fileName)
 
 		err = os.WriteFile(resolvedFilePath, []byte(detail), 0644)
+
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
@@ -74,7 +76,6 @@ func GetData() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	fmt.Println("Working Directory:", wd)
 
 	// Define the filepath
 	filePath := "data\\" // Using Windows filepath separator

@@ -44,7 +44,11 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 			ruler := os.Getenv("RULER")
 			list := os.Getenv("LIST")
 			lists := strings.Split(list, ",")
-			if isTrue := findID(lists, user); isTrue {
+			isUserOk := checkUser(sender)
+			if sender == ruler {
+				isUserOk = true
+			}
+			if isTrue := findID(lists, user); isTrue && isUserOk {
 				fmt.Println("Message Body: ", messageBody)
 				fmt.Println("Extended Message: ", v.Message.GetExtendedTextMessage().GetText())
 				if messageBody == "" {
@@ -150,7 +154,6 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 							Conversation: proto.String(fmt.Sprintf("###### USER LIST ########\n\n%s", message)),
 						})
 					}
-
 				} else if len(messageBody) >= 12 {
 					if messageBody[:4] == "!add" {
 						numbers := strings.Split(messageBody, " ")
@@ -177,6 +180,13 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 								})
 							}
 
+							if isDuplicate, whichFound := checkDuplicate(numbers[1], numbers[2]); isDuplicate {
+								clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+									Conversation: proto.String(fmt.Sprintf("%s ALREADY ADDED", whichFound)),
+								})
+								return
+							}
+
 							var data []map[string]interface{}
 
 							if content == "" {
@@ -199,8 +209,6 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 								data = append(data, currentData)
 							}
 
-							fmt.Println(data)
-
 							json, err := json.Marshal(data)
 
 							if err != nil {
@@ -213,7 +221,7 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 							CreateFile(string(json))
 
 							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-								Conversation: proto.String(fmt.Sprintf("%s - %s added!", numbers[2], numbers[1])),
+								Conversation: proto.String(fmt.Sprintf("%s - %s has been added!", numbers[2], numbers[1])),
 							})
 						} else {
 							fmt.Printf("is null %t\n", res)
@@ -221,9 +229,28 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 								Conversation: proto.String(fmt.Sprintf("%s is not a number", numbers[1])),
 							})
 						}
+					} else if messageBody[:7] == "!remove" {
+						body := strings.Split(messageBody, " ")
+						if sender != ruler {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String("You are not authorized to use this command!"),
+							})
+							return
+						}
+						err := removeUser(body[1])
+						if err != nil {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(fmt.Sprintf("%v", err)),
+							})
+							return
+						}
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(fmt.Sprintf("%s is successfully removed!", body[1])),
+						})
+
 					} else if AITurnedON && len(messageBody) == 12 && messageBody[:12] == "!getResponse" {
 						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-							Conversation: proto.String("tulis sesuatu!"),
+							Conversation: proto.String("Write something!"),
 						})
 					} else if AITurnedON && messageBody[:12] == "!getResponse" {
 						prompt := messageBody[12:]
@@ -294,4 +321,88 @@ func checkNumber(str string) bool {
 	re := regexp.MustCompile(`^[0-9]+$`)
 
 	return re.MatchString(str)
+}
+
+func checkUser(str string) bool {
+	var data []map[string]interface{}
+	content, err := GetData()
+	if err != nil {
+		fmt.Println("checkUser: ", err)
+	}
+
+	err = json.Unmarshal([]byte(content), &data)
+
+	if err != nil {
+		fmt.Println("checkUser: ", err)
+	}
+
+	for _, val := range data {
+		if val["phone"] == str {
+			return true
+		}
+	}
+
+	return false
+}
+
+func checkDuplicate(phone string, name string) (isDuplicate bool, whichFound string) {
+	var data []map[string]interface{}
+	content, err := GetData()
+	if err != nil {
+		fmt.Println("checkDuplicate: ", err)
+	}
+
+	err = json.Unmarshal([]byte(content), &data)
+
+	if err != nil {
+		fmt.Println("checkDuplicate: ", err)
+	}
+
+	for _, val := range data {
+		if val["phone"] == phone {
+			return true, phone
+		} else if val["name"] == name {
+			return true, name
+		}
+	}
+
+	return false, ""
+}
+
+func removeUser(str string) error {
+	var data []map[string]interface{}
+	idx := -1
+	content, err := GetData()
+	if err != nil {
+		fmt.Println("checkUser: ", err)
+	}
+
+	err = json.Unmarshal([]byte(content), &data)
+
+	if err != nil {
+		fmt.Println("removeUser", err)
+		return err
+	}
+
+	for i, val := range data {
+		if val["name"] == str {
+			idx = i
+		}
+	}
+
+	if idx == -1 {
+		return fmt.Errorf("user not found")
+	}
+
+	data = append(data[:idx], data[idx+1:]...)
+
+	result, err := json.Marshal(data)
+	if err != nil {
+		fmt.Println("removeUser", err)
+		return err
+	}
+
+	CreateFile(string(result))
+
+	return nil
 }
