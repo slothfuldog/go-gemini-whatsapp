@@ -2,8 +2,10 @@ package function
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,6 +40,8 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 			var messageBody = v.Message.GetConversation()
 			fmt.Println(v.Info.MessageSource.Chat.User)
 			user := v.Info.MessageSource.Chat.User
+			sender := v.Info.MessageSource.Sender.User
+			ruler := os.Getenv("RULER")
 			list := os.Getenv("LIST")
 			lists := strings.Split(list, ",")
 			if isTrue := findID(lists, user); isTrue {
@@ -58,11 +62,23 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 						Conversation: proto.String(strings),
 					})
 				} else if messageBody == "!useFlash" {
+					if sender != ruler {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("You are not authorized to change the model!"),
+						})
+						return
+					}
 					models = "gemini-1.5-flash-8b"
 					clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String("Model changed into Flash"),
 					})
 				} else if messageBody == "!usePro" {
+					if sender != ruler {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("You are not authorized to change the model!"),
+						})
+						return
+					}
 					models = "gemini-1.5-pro"
 					clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String("Model changed into Pro"),
@@ -73,7 +89,7 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 						Conversation: proto.String(strings),
 					})
 				} else if messageBody == "!checkList" {
-					strings := fmt.Sprintf("####Command List####\n!turnon: turn on AI command\n!turnoff: turnoff AI command\n!checkSts: Check AI Status\n!useFlash: Use Flash Model\n!usePro: use Pro Model\n!getResponse: Get response from AI (i.e: !getResponse what is love?)\nNote: User should turnon AI command before using !getResponse")
+					strings := "####Command List####\n!turnon: turn on AI command\n!turnoff: turnoff AI command\n!checkSts: Check AI Status\n!useFlash: Use Flash Model\n!usePro: use Pro Model\n!getResponse: Get response from AI (i.e: !getResponse what is love?)\nNote: User should turnon AI command before using !getResponse"
 					clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String(strings),
 					})
@@ -82,8 +98,130 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 					clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 						Conversation: proto.String(strings),
 					})
+				} else if messageBody == "!turnoff" {
+					if !AITurnedON {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("AITurnedON already false!!!"),
+						})
+					} else {
+						AITurnedON = false
+						strings := fmt.Sprintf("AITurnedON status: %t", AITurnedON)
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(strings),
+						})
+					}
+				} else if messageBody == "!checkUsers" {
+
+					var data []map[string]interface{}
+					var message string
+
+					if sender != ruler {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("You are not authorized to use this command!"),
+						})
+						return
+					}
+
+					content, err := GetData()
+					if err != nil {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(fmt.Sprintf("%v", err)),
+						})
+						return
+					}
+
+					if content == "" {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("There are no user in the list!"),
+						})
+						return
+					}
+
+					if err = json.Unmarshal([]byte(content), &data); err != nil {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(fmt.Sprintf("%v", err)),
+						})
+						return
+					} else {
+						for i, val := range data {
+							message += fmt.Sprintf("%d)\tname: %s\n\tphone: +%s\n\n", i+1, val["name"], val["phone"])
+						}
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String(fmt.Sprintf("###### USER LIST ########\n\n%s", message)),
+						})
+					}
+
 				} else if len(messageBody) >= 12 {
-					if AITurnedON && len(messageBody) == 12 && messageBody[:12] == "!getResponse" {
+					if messageBody[:4] == "!add" {
+						numbers := strings.Split(messageBody, " ")
+
+						if sender != ruler {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String("You are not authorized to use this command!"),
+							})
+							return
+						}
+
+						if len(numbers) != 3 {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String("Invalid Format!\n use !add phoneNumber name"),
+							})
+							return
+						}
+						if res := checkNumber(numbers[1]); res {
+							content, err := GetData()
+
+							if err != nil {
+								clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+									Conversation: proto.String(fmt.Sprintf("%v", err)),
+								})
+							}
+
+							var data []map[string]interface{}
+
+							if content == "" {
+								data = []map[string]interface{}{
+									{"name": numbers[2],
+										"phone": numbers[1],
+									},
+								}
+							} else {
+								err := json.Unmarshal([]byte(content), &data)
+								if err != nil {
+									clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+										Conversation: proto.String(fmt.Sprintf("%v", err)),
+									})
+								}
+								currentData := map[string]interface{}{
+									"name":  numbers[2],
+									"phone": numbers[1],
+								}
+								data = append(data, currentData)
+							}
+
+							fmt.Println(data)
+
+							json, err := json.Marshal(data)
+
+							if err != nil {
+								clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+									Conversation: proto.String(fmt.Sprintf("%s - %s cannot be added: [%v]", numbers[2], numbers[1], err)),
+								})
+								return
+							}
+
+							CreateFile(string(json))
+
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(fmt.Sprintf("%s - %s added!", numbers[2], numbers[1])),
+							})
+						} else {
+							fmt.Printf("is null %t\n", res)
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(fmt.Sprintf("%s is not a number", numbers[1])),
+							})
+						}
+					} else if AITurnedON && len(messageBody) == 12 && messageBody[:12] == "!getResponse" {
 						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
 							Conversation: proto.String("tulis sesuatu!"),
 						})
@@ -135,18 +273,6 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 							Conversation: proto.String("Turnon AI first!"),
 						})
 					}
-				} else if messageBody == "!turnoff" {
-					if !AITurnedON {
-						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-							Conversation: proto.String("AITurnedON already false!!!"),
-						})
-					} else {
-						AITurnedON = false
-						strings := fmt.Sprintf("AITurnedON status: %t", AITurnedON)
-						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
-							Conversation: proto.String(strings),
-						})
-					}
 				}
 			}
 
@@ -161,4 +287,11 @@ func findID(str []string, match string) bool {
 		}
 	}
 	return false
+}
+
+func checkNumber(str string) bool {
+
+	re := regexp.MustCompile(`^[0-9]+$`)
+
+	return re.MatchString(str)
 }
