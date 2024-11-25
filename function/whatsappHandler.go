@@ -371,7 +371,14 @@ func checkDuplicate(phone string, name string) (isDuplicate bool, whichFound str
 
 func removeUser(str string) error {
 	var data []map[string]interface{}
+	dir, _ := os.Getwd()
+	currDir := fmt.Sprintf("%s/.env", dir)
+	err := godotenv.Load(currDir)
+	if err != nil {
+		fmt.Println("checkUser: ", err)
+	}
 	idx := -1
+	ruler := os.Getenv("RULER")
 	content, err := GetData()
 	if err != nil {
 		fmt.Println("checkUser: ", err)
@@ -386,6 +393,9 @@ func removeUser(str string) error {
 
 	for i, val := range data {
 		if val["name"] == str {
+			if val["phone"] == ruler {
+				return fmt.Errorf("what are you doing?")
+			}
 			idx = i
 		}
 	}
