@@ -48,12 +48,16 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 			if sender == ruler {
 				isUserOk = true
 			}
+			image := v.Message.GetImageMessage()
+			caption := v.Message.GetImageMessage().GetCaption()
+
 			if isTrue := findID(lists, user); isTrue && isUserOk {
 				fmt.Println("Message Body: ", messageBody)
 				fmt.Println("Extended Message: ", v.Message.GetExtendedTextMessage().GetText())
 				if messageBody == "" {
 					messageBody = v.Message.GetExtendedTextMessage().GetText()
 				}
+
 				if messageBody == "!turnon" && !AITurnedON {
 					AITurnedON = true
 					strings := fmt.Sprintf("AITurnedON Status: %t", AITurnedON)
@@ -154,7 +158,71 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 							Conversation: proto.String(fmt.Sprintf("###### USER LIST ########\n\n%s", message)),
 						})
 					}
-				} else if len(messageBody) >= 12 {
+				} else if len(caption) >= 10 {
+					if AITurnedON && caption[:10] == "!getImgRes" && image != nil {
+
+						prompt := caption[10:]
+						tries := 0
+
+						img, err := clientW.Download(image)
+						if err != nil {
+							fmt.Println("Error Image:", err)
+							return
+						}
+						fileName, err := UploadData(img)
+						if err != nil {
+							fmt.Println("Error Uploading image:", err)
+							return
+						}
+
+						fmt.Println("Success Saving data picture", fileName)
+
+						for IsWorking {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(fmt.Sprintf("Waiting job to be done ...(%d secs)", tries*5)),
+							})
+							time.Sleep(5 * time.Second)
+							tries++
+						}
+						go func() {
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String("Generating data...."),
+							})
+							resp := WriteImgPrompt(prompt, ctx, client, models, fileName)
+							clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+								Conversation: proto.String(resp),
+							})
+							done <- true
+							tries = 0
+						}()
+
+						go func() {
+							// Monitor elapsed time
+							interval := 10 * time.Second
+							start := time.Now()
+							ticker := time.NewTicker(interval)
+							for {
+								select {
+								case <-ticker.C:
+									elapsed := time.Since(start)
+									fmt.Printf("Elapsed time: %v\n", elapsed)
+									stringss := fmt.Sprintf("Elapsed time: %v\n", elapsed)
+									clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+										Conversation: proto.String(stringss),
+									})
+								case <-done:
+									ticker.Stop()
+									return
+								}
+							}
+						}()
+
+					} else if !AITurnedON && caption[:10] == "!getImgRes" && image != nil {
+						clientW.SendMessage(context.Background(), v.Info.Chat, &waProto.Message{
+							Conversation: proto.String("Turnon AI first!"),
+						})
+					}
+				} else if len(messageBody) >= 10 {
 					if messageBody[:4] == "!add" {
 						numbers := strings.Split(messageBody, " ")
 
