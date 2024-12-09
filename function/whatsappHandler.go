@@ -159,7 +159,7 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 						})
 					}
 				} else if len(caption) >= 10 {
-					if AITurnedON && caption[:10] == "!getImgRes" && image != nil {
+					if types := v.Message.GetImageMessage().GetMimetype(); AITurnedON && caption[:10] == "!getImgRes" && image != nil && types == "image/jpeg" {
 
 						prompt := caption[10:]
 						tries := 0
@@ -222,7 +222,7 @@ func WhatsappHandler(client genai.Client, clientW *whatsmeow.Client, ctx context
 							Conversation: proto.String("Turnon AI first!"),
 						})
 					}
-				} else if len(messageBody) >= 10 {
+				} else if len(messageBody) >= 12 {
 					if messageBody[:4] == "!add" {
 						numbers := strings.Split(messageBody, " ")
 
